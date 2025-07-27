@@ -1,50 +1,107 @@
-import { Exclude, Expose } from "class-transformer"
+import { Exclude } from "class-transformer"
 import {
   Column,
+  CreateDateColumn,
+  DeleteDateColumn,
   Entity,
-  JoinColumn,
-  ManyToOne,
-  OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from "typeorm"
-import { BaseEntity } from "@/lib/entity"
-import { RoleEntity } from "@/modules/role/entities/role.entity"
-import { SessionEntity } from "@/modules/session/entities/session.entity"
+import { UserRole } from "../user.constant"
 
 @Entity({
   name: "users",
 })
-export class UserEntity extends BaseEntity {
-  @PrimaryGeneratedColumn()
+export class UserEntity {
+  @PrimaryGeneratedColumn({
+    type: "integer",
+  })
   id: number
 
-  @Column({ name: "fist_name", nullable: true })
+  @Column({
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   firstName?: string
 
-  @Column({ name: "last_name", nullable: true })
+  @Column({
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   lastName?: string
 
-  @Column({ unique: true })
+  @Column({
+    type: "varchar",
+    unique: true,
+  })
   email: string
 
-  @Column()
+  @Column({
+    type: "varchar",
+    nullable: true,
+  })
+  refreshToken?: string
+
+  @Column({
+    type: "varchar",
+    select: false,
+    nullable: true,
+  })
   @Exclude()
-  password: string
+  password?: string
 
-  @OneToMany(() => SessionEntity, (session) => session.user)
-  sessions: SessionEntity[]
+  @Column({
+    type: "enum",
+    enum: UserRole,
+  })
+  role: UserRole
 
-  @ManyToOne(() => RoleEntity, (role) => role.users)
-  @JoinColumn({ name: "role_id" })
-  role: RoleEntity
+  @Column({
+    type: "varchar",
+    nullable: true,
+  })
+  picture?: string
 
-  @Expose()
-  get fullName(): string {
-    return `${this.firstName} ${this.lastName}`
-  }
+  @Column({
+    type: "jsonb",
+    nullable: true,
+  })
+  metadata?: object
 
-  constructor(partial: Partial<UserEntity>) {
-    super()
-    Object.assign(this, partial)
-  }
+  @Column({
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  provider?: string
+
+  @Column({
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  providerId?: string
+
+  @Column({
+    type: "boolean",
+    nullable: true,
+  })
+  emailVerified?: boolean
+
+  @CreateDateColumn()
+  createdAt: Date
+
+  @UpdateDateColumn()
+  updatedAt: Date
+
+  @DeleteDateColumn()
+  deletedAt: Date
+
+  @Column({
+    type: "boolean",
+    default: false,
+  })
+  isActive?: boolean
 }

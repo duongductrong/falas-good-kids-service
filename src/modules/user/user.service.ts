@@ -1,91 +1,139 @@
-import { Injectable } from "@nestjs/common"
+import { BadRequestException, Injectable } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
-import {
-  DeepPartial,
-  DeleteResult,
-  FindManyOptions,
-  FindOneOptions,
-  FindOptionsWhere,
-  ObjectId,
-  Repository,
-} from "typeorm"
-import { BaseResourceService, FindAllWithPaginatedOptions } from "@/lib/service"
+import * as bcrypt from "bcryptjs"
+import { FindOptionsSelect, FindOptionsWhere, Repository } from "typeorm"
 import { UserEntity } from "./entities/user.entity"
+import { UserRole } from "./user.constant"
 
 @Injectable()
-export class UserService extends BaseResourceService<UserEntity> {
+export class UserService {
   @InjectRepository(UserEntity)
-  private readonly userRepository: Repository<UserEntity>
+  private readonly userRepo: Repository<UserEntity>
 
-  findAll(criteria?: FindManyOptions<UserEntity>): Promise<UserEntity[]> {
-    return this.userRepository.find(criteria)
-  }
-
-  findAllWithPaginated(
-    options: FindAllWithPaginatedOptions,
-  ): Promise<[UserEntity[], number]> {
-    const { page, limit, ...findOptions } = options
-    return this.userRepository.findAndCount({
-      skip: page * limit,
-      take: limit,
-      ...findOptions,
-    })
-  }
-
-  findOne(
-    criteria: string | number | Date | ObjectId,
-    options?: FindOneOptions<UserEntity>,
-  ): Promise<UserEntity> {
-    return this.userRepository.findOne({
-      ...options,
+  findUserByEmail(
+    email: string,
+    options?: {
+      select?: FindOptionsSelect<UserEntity>
+      where?: FindOptionsWhere<UserEntity>
+    },
+  ): Promise<UserEntity | null> {
+    return this.userRepo.findOne({
       where: {
-        id: criteria as number,
+        email,
+        deletedAt: null,
         ...options?.where,
+      },
+      select: {
+        password: true,
+        createdAt: true,
+        deletedAt: true,
+        email: true,
+        firstName: true,
+        refreshToken: true,
+        id: true,
+        isActive: true,
+        lastName: true,
+        role: true,
+        updatedAt: true,
+        ...options?.select,
       },
     })
   }
 
-  findOneByEmail(criteria: string): Promise<UserEntity | null> {
-    return this.userRepository.findOne({ where: { email: criteria } })
+  findUserByProvider(
+    payload?: { providerId: string; provider: string },
+    options?: {
+      where?: FindOptionsWhere<UserEntity>
+      select?: FindOptionsSelect<UserEntity>
+    },
+  ) {
+    return this.userRepo.findOne({
+      ...options,
+      where: {
+        provider: payload.provider,
+        providerId: payload.providerId,
+        ...options?.where,
+      },
+      select: {
+        ...options?.select,
+      },
+    })
   }
 
-  async create<P = DeepPartial<UserEntity | UserEntity[]>>(
-    payloads: P,
-  ): Promise<P extends UserEntity[] ? UserEntity[] : UserEntity> {
-    const entities = this.toArrayEntities(payloads).map((item) =>
-      this.userRepository.create(item as Partial<UserEntity>),
-    )
-
-    const result = await this.userRepository.save(entities)
-
-    return Array.isArray(payloads) ? result : (result[0] as any)
+  findUserById(
+    id: number,
+    options?: {
+      select?: FindOptionsSelect<UserEntity>
+      where?: FindOptionsWhere<UserEntity>
+    },
+  ): Promise<UserEntity | null> {
+    return this.userRepo.findOne({
+      where: {
+        id,
+        deletedAt: null,
+        ...options?.where,
+      },
+      select: {
+        password: true,
+        createdAt: true,
+        deletedAt: true,
+        email: true,
+        firstName: true,
+        id: true,
+        isActive: true,
+        refreshToken: true,
+        lastName: true,
+        role: true,
+        updatedAt: true,
+        ...options?.select,
+      },
+    })
   }
 
-  async update(
-    criteria: string | number | Date | ObjectId,
-    payloads: UserEntity,
-  ): Promise<UserEntity> {
-    const result = await this.userRepository.update(criteria, payloads)
+  createSuperAdmin(user: Omit<UserEntity, "role">): Promise<UserEntity | null> {
+    const userCreated = this.userRepo.create({
+      ...user,
+      role: UserRole.SuperAdmin,
+    })
 
-    if (result.affected <= 0) {
-      throw new Error("Update failed")
+    return this.userRepo.save(userCreated)
+  }
+
+  async createUser(
+    payload: Omit<UserEntity, "id" | "createdAt" | "updatedAt" | "deletedAt">,
+  ): Promise<UserEntity | null> {
+    const user = await this.userRepo.findOne({
+      where: {
+        email: payload.email,
+      },
+    })
+
+    if (user) {
+      throw new BadRequestException("User already exists")
     }
 
-    return this.findOne(criteria)
+    const hashedPassword = !payload.password
+      ? null
+      : await bcrypt.hash(payload.password, 10)
+
+    const userCreated = this.userRepo.create({
+      role: UserRole.Customer,
+      ...payload,
+      password: hashedPassword,
+    })
+
+    return this.userRepo.save(userCreated)
   }
 
-  delete(
-    criteria:
-      | string
-      | number
-      | Date
-      | ObjectId
-      | string[]
-      | number[]
-      | Date[]
-      | ObjectId[]
-      | FindOptionsWhere<UserEntity>,
-  ): Promise<DeleteResult> {
-    return this.userRepository.delete(criteria)
+  updateUser(id: number, payload: Partial<UserEntity>) {
+    return this.userRepo.update(id, payload)
+  }
+
+  softDelete(id: number) {
+    return this.userRepo.softDelete(id)
+  }
+
+  permanentDelete(id: number) {
+    return this.userRepo.delete(id)
   }
 }

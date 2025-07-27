@@ -1,20 +1,18 @@
-import { NestFactory, Reflector } from "@nestjs/core"
-
 import {
   ClassSerializerInterceptor,
   INestApplication,
   VersioningType,
 } from "@nestjs/common"
+import { NestFactory, Reflector } from "@nestjs/core"
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger"
 import { useContainer } from "class-validator"
-import { config as envConfig } from "dotenv"
+import { configDotenv } from "dotenv"
 import { initializeTransactionalContext } from "typeorm-transactional"
-import { I18nValidationPipe } from "nestjs-i18n"
 import { AppModule } from "./app.module"
-import { logger } from "./lib/logger"
-import { ApiInterceptor, ApiPipe } from "./packages/api"
+import { ApiInterceptor, ApiPipe } from "./shared/api"
+import { logger } from "./shared/utils/logger"
 
-envConfig()
+configDotenv()
 
 function setupSwagger(app: INestApplication<any>, prefix = "docs") {
   const config = new DocumentBuilder()
@@ -34,45 +32,49 @@ function setupSwagger(app: INestApplication<any>, prefix = "docs") {
   SwaggerModule.setup(prefix, app, document)
 }
 
-async function bootstrap() {
-  initializeTransactionalContext()
+async function setupServer(app: INestApplication<any>, prefix: string) {
+  await app.listen(process.env.APP_PORT || 8000)
 
-  const appPrefix = process.env.APP_PREFIX || "/"
+  logger.info(
+    "Server running at port: " +
+      `http://localhost:${process.env.APP_PORT}/${prefix}`,
+  )
+}
 
-  const app = await NestFactory.create(AppModule)
-
-  // Application config
-  app.setGlobalPrefix(appPrefix)
-
-  // Cors config
+async function setupPlugins(app: INestApplication<any>) {
+  // CORS Configuration
   app.enableCors({
     origin: process.env.APP_CORS.split(",").map((i) => i.trim()),
   })
 
-  // Class serializer config
+  // App versioning
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: "1",
+  })
+
   app.useGlobalInterceptors(
     new ApiInterceptor(),
     new ClassSerializerInterceptor(app.get(Reflector)),
   )
 
-  app.useGlobalPipes(new I18nValidationPipe(), ApiPipe.create())
-
-  // App versioning
-  app.enableVersioning({
-    type: VersioningType.URI,
-  })
-
-  // Class transformer config
-  useContainer(app.select(AppModule), { fallbackOnErrors: true })
-
-  setupSwagger(app)
-
-  logger.info(
-    "Server running at port: " +
-      `http://localhost:${process.env.APP_PORT}/${appPrefix}`,
-  )
-
-  await app.listen(process.env.APP_PORT || 3000)
+  app.useGlobalPipes(ApiPipe.create())
 }
 
+async function bootstrap() {
+  initializeTransactionalContext()
+
+  const appPrefix = process.env.APP_PREFIX || "/"
+
+  const app = await NestFactory.create(AppModule, { cors: true })
+
+  app.setGlobalPrefix(appPrefix)
+
+  setupPlugins(app)
+  setupSwagger(app)
+
+  useContainer(app.select(AppModule), { fallbackOnErrors: true })
+
+  setupServer(app, appPrefix)
+}
 bootstrap()

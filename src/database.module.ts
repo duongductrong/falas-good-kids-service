@@ -1,8 +1,11 @@
-/* eslint-disable eqeqeq */
 import { Module } from "@nestjs/common"
 import { ConfigModule, ConfigService } from "@nestjs/config"
 import { TypeOrmModule } from "@nestjs/typeorm"
+import { configDotenv } from "dotenv"
 import { DataSourceOptions } from "typeorm"
+import { SnakeNamingStrategy } from "typeorm-naming-strategies"
+
+configDotenv({})
 
 @Module({
   imports: [
@@ -11,7 +14,7 @@ import { DataSourceOptions } from "typeorm"
       useFactory(configService: ConfigService) {
         const databaseUrl = configService.get<string>("DATABASE_URL")
 
-        if (!databaseUrl) {
+        if (databaseUrl) {
           return {
             url: databaseUrl,
           }
@@ -28,13 +31,12 @@ import { DataSourceOptions } from "typeorm"
           password: configService.get<string>("DATABASE_PASSWORD"),
           database: configService.get<string>("DATABASE_NAME"),
           entities: [`${__dirname}/**/*.entity{.ts,.js}`],
-          synchronize: configService.get<string>("DATABASE_SYNC") == "true",
+          synchronize: configService.get<string>("DATABASE_SYNC") === "true",
+          namingStrategy: new SnakeNamingStrategy(),
         }
       },
       inject: [ConfigService],
     }),
   ],
-  exports: [],
-  providers: [],
 })
 export class DatabaseModule {}

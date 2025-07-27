@@ -1,110 +1,137 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
-  Headers,
   Inject,
   InternalServerErrorException,
+  Param,
   Post,
-  Put,
-  UnauthorizedException,
+  Res,
+  UseGuards,
 } from "@nestjs/common"
-import { ApiTags } from "@nestjs/swagger"
-import { I18n } from "nestjs-i18n"
-import { AppVersion } from "@/app.enum"
-import { Translations, TranslatorContext, TranslatorService } from "@/lib/i18n"
-import { ApiBuilder } from "@/packages/api"
+import { Response } from "express"
+import { omit } from "lodash"
+import { ApiBuilder } from "src/shared/api"
+import { milliseconds } from "@/utils/time"
 import { UserEntity } from "../user/entities/user.entity"
-import { Auth, Token, User } from "./auth.decorator"
-import { AuthApi, AuthPath } from "./auth.enum"
 import { AuthService } from "./auth.service"
-import { LoginDto } from "./dtos/login.dto"
-import { SignUpDto } from "./dtos/signup.dto"
+import { CurrentUser, GoogleUser } from "./decorators/current-user.decorator"
+import { RefreshTokenRequest } from "./dtos/refresh-token.dto"
+import { SignUpRequest } from "./dtos/sign-up.dto"
+import { GoogleAuthGuard } from "./guards/google-auth.guard"
+import { JwtAuthGuard } from "./guards/jwt-auth.guard"
+import { LocalAuthGuard } from "./guards/local-auth.guard"
+import { jwtConstants } from "./jwt.constants"
 
-@ApiTags(AuthApi.Tags)
 @Controller({
-  path: AuthApi.Path,
-  version: AppVersion.v1,
+  path: "auth",
 })
 export class AuthController {
-  @Inject()
+  @Inject(AuthService)
   private readonly authService: AuthService
 
-  @Inject() private readonly translator: TranslatorService<Translations>
+  private withCredentials(
+    response: Response,
+    result: Awaited<ReturnType<typeof this.authService.login>>,
+  ) {
+    response.cookie("accessToken", result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: milliseconds(jwtConstants.expiresIn),
+    })
 
-  @Auth()
-  @Get(AuthPath.Me)
-  async me(@User() user: UserEntity, @I18n() translator: TranslatorContext) {
+    response.cookie("refreshToken", result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: milliseconds(jwtConstants.refreshExpiresIn),
+    })
+  }
+
+  @UseGuards(LocalAuthGuard)
+  @Post("login")
+  async login(
+    @CurrentUser() user: UserEntity,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.login(user)
+
+    this.withCredentials(response, result)
+
     return ApiBuilder.create()
-      .setData(user)
-      .setMessage(translator.t("general.success.retrieved"))
+      .setData(result)
+      .setMessage("Login successful")
       .build()
   }
 
-  @Post(AuthPath.Login)
-  async login(@Body() credentials: LoginDto, @Headers() headers: any) {
-    const userAgent = headers["user-agent"]
-    try {
-      const result = await this.authService.login({
-        identify: credentials.identify,
-        password: credentials.password,
-        metadata: { userAgent },
-      })
+  @Post("signup")
+  async signup(@Body() body: SignUpRequest) {
+    const result = await this.authService.signup(body)
 
-      return ApiBuilder.create()
-        .setData({
-          accessToken: result,
-        })
-        .setMessage(this.translator.t("general.success.operation"))
-        .build()
-    } catch (error) {
-      throw new UnauthorizedException(
-        error?.message || this.translator.t("general.error.invalidCredentials"),
-      )
-    }
+    return ApiBuilder.create()
+      .setData(result)
+      .setMessage("User created successfully")
+      .build()
   }
 
-  @Post(AuthPath.Signup)
-  async signup(@Body() payload: SignUpDto) {
-    try {
-      const result = await this.authService.signUp(payload)
-
-      return ApiBuilder.create()
-        .setData(result)
-        .setMessage(this.translator.t("general.success.operation"))
-        .build()
-    } catch (error) {
-      throw new InternalServerErrorException(
-        error?.message || this.translator.t("general.error.somethingWentWrong"),
-      )
-    }
+  @UseGuards(JwtAuthGuard)
+  @Get("me")
+  async me(@CurrentUser() user: UserEntity) {
+    return ApiBuilder.create()
+      .setData(omit(user, ["refreshToken", "password"]))
+      .setMessage("User fetched successfully")
+      .build()
   }
 
-  @Auth()
-  @Post(AuthPath.Logout)
-  async logout(@Token() token: string) {
-    try {
-      await this.authService.signOut(token)
+  @Post("refresh-token")
+  async refresh(@Body() body: RefreshTokenRequest) {
+    const { refreshToken } = body
 
-      return ApiBuilder.create()
-        .setData({})
-        .setMessage(this.translator.t("general.success.operation"))
-        .build()
-    } catch (e) {
-      throw new BadRequestException(e?.message)
-    }
-  }
-
-  @Put(AuthPath.Refresh)
-  async refresh(@Token() token: string) {
-    const result = await this.authService.refreshToken(token)
+    const newAccessToken = await this.authService.refresh(refreshToken)
 
     return ApiBuilder.create()
       .setData({
-        accessToken: result,
+        accessToken: newAccessToken,
       })
-      .setMessage(this.translator.t("general.success.operation"))
+      .setMessage("Token refreshed successfully")
+      .build()
+  }
+
+  @UseGuards(GoogleAuthGuard)
+  @Get("/google")
+  async google() {
+    return ApiBuilder.create().setData({}).setMessage("Auth successful").build()
+  }
+
+  @UseGuards(GoogleAuthGuard)
+  @Get("/callback/:providerId")
+  async oauthCallback(
+    @Param("providerId") providerId: string,
+    @CurrentUser() user: GoogleUser,
+    @Res() response: Response,
+  ) {
+    let actualUser: UserEntity | null = null
+
+    if (user.provider === "google") {
+      try {
+        actualUser = await this.authService.verifyGoogleUserOrCreate(
+          user.profile.id,
+          user.profile,
+          user.googleAccessToken,
+        )
+      } catch {
+        throw new InternalServerErrorException(
+          "Failed to verify or create Google user",
+        )
+      }
+    }
+
+    const result = await this.authService.login(actualUser)
+
+    this.withCredentials(response, result)
+
+    return ApiBuilder.create()
+      .setData(result)
+      .setMessage("Successfully authenticated with Google")
       .build()
   }
 }

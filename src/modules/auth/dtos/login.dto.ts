@@ -1,14 +1,11 @@
-import { ApiProperty } from "@nestjs/swagger"
-import { IsEmail, IsString } from "class-validator"
-import { AuthCredentials } from "../auth.service"
+import { IsEmail, IsString, IsStrongPassword } from "class-validator"
 
-export class LoginDto implements AuthCredentials {
-  @IsString()
-  @IsEmail()
-  @ApiProperty({ example: "your_email@example.com" })
-  identify: string
+export class LoginRequest {
+  @IsString({ message: "Email is required" })
+  @IsEmail({}, { message: "Email is not valid" })
+  username: string
 
-  @IsString()
-  @ApiProperty({ example: "your_password" })
+  @IsString({ message: "Password is required" })
+  @IsStrongPassword({}, { message: "Password is not valid" })
   password: string
 }

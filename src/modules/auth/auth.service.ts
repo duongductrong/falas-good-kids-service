@@ -2,255 +2,164 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common"
-import { ConfigService } from "@nestjs/config"
 import { JwtService } from "@nestjs/jwt"
-import { InjectRepository } from "@nestjs/typeorm"
-import { Dayjs } from "dayjs"
-import { MoreThan, Repository } from "typeorm"
-import { token } from "@/lib/token"
-import { Translations, TranslatorService } from "@/lib/i18n"
-import { dayjs } from "@/lib/dayjs"
-import { SessionService } from "../session/session.service"
+import * as bcrypt from "bcryptjs"
+import { Profile } from "passport-google-oauth20"
 import { UserEntity } from "../user/entities/user.entity"
+import { UserRole } from "../user/user.constant"
 import { UserService } from "../user/user.service"
-
-export interface AuthCredentials {
-  identify: string
-  password: string
-
-  metadata?: Record<"userAgent", any>
-}
-
-export interface AuthValidatedResult {
-  isValid: boolean
-  data: UserEntity
-}
-
-export interface AuthJwtSignPayload {
-  email: UserEntity["email"]
-  sub: UserEntity["id"]
-}
-
-export interface AuthSignupPayload
-  extends Pick<UserEntity, "email" | "firstName" | "lastName" | "password"> {}
-
-interface AuthServiceInterface {
-  validate(credentials: AuthCredentials): Promise<AuthValidatedResult>
-  login(credentials: AuthCredentials): Promise<string>
-  signUp(payload: AuthSignupPayload): Promise<UserEntity>
-  signOut(accessToken: string): Promise<boolean>
-  refreshToken(accessToken: string): Promise<string>
-  // forgotPassword(): Promise<void>;
-  // resetPassword(): Promise<void>;
-  // verifyEmail(): Promise<void>;
-  // resendEmailVerification(): Promise<void>;
-  // changePassword(): Promise<void>;
-  // changeEmail(): Promise<void>;
-  // changeUsername(): Promise<void>;
-}
+import { AuthTokenPayload } from "./classes/auth-token-payload"
+import { SignUpRequest } from "./dtos/sign-up.dto"
+import { jwtConstants } from "./jwt.constants"
 
 @Injectable()
-export class AuthService implements AuthServiceInterface {
-  @InjectRepository(UserEntity)
-  private readonly userRepository: Repository<UserEntity>
-
-  @Inject()
-  private readonly userService: UserService
-
-  @Inject()
+export class AuthService {
+  @Inject(JwtService)
   private readonly jwtService: JwtService
 
-  @Inject()
-  private readonly sessionService: SessionService
+  @Inject(UserService)
+  private readonly userService: UserService
 
-  @Inject()
-  private readonly configService: ConfigService
+  private isRefreshTokenValid(token: string | null | undefined): boolean {
+    if (!token) return false
 
-  @Inject()
-  private readonly translatorService: TranslatorService<Translations>
+    try {
+      return !!this.jwtService.verify(token)
+    } catch {
+      return false
+    }
+  }
 
-  /**
-   * Generates a token for the given credentials and user.
-   * If session service is enabled, it checks if there is an active session for the user.
-   * If an active session exists, it returns the session token.
-   * Otherwise, it generates a new access token using the JWT service.
-   *
-   * @param credentials - The authentication credentials.
-   * @param user - The user entity.
-   * @param expiresIn - The expiration time for the token.
-   * @returns A promise that resolves to the generated token.
-   */
-  private async makeToken(
-    credentials: Omit<AuthCredentials, "password">,
-    user: UserEntity,
-    expiresIn: Dayjs,
-  ): Promise<string> {
-    const isEnabledSessionFeature = this.sessionService.isEnabled()
+  async verifyUser(email: string, password: string) {
+    const user = await this.userService.findUserByEmail(email)
 
-    if (isEnabledSessionFeature) {
-      const currentSession = await this.sessionService.getSessionByUser(user, {
-        where: { expiresAt: MoreThan(dayjs().toDate()) },
-      })
-
-      if (currentSession) {
-        return currentSession.token
-      }
+    if (!user) {
+      throw new NotFoundException("We could not find any user with that email")
     }
 
-    const accessToken = await this.jwtService.sign(
-      {
-        email: credentials.identify,
-        sub: user.id,
-      },
-      { expiresIn: expiresIn.unix() },
+    if (!user.isActive) {
+      throw new UnauthorizedException("User is not active")
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      password ?? "",
+      user.password ?? "",
     )
 
-    if (isEnabledSessionFeature) {
-      await this.sessionService.createSession({
-        user,
-        token: accessToken,
-        userAgent: credentials.metadata?.userAgent,
-        expiresAt: expiresIn.toDate(),
-      })
+    if (!isPasswordValid) {
+      throw new UnauthorizedException("Invalid password")
     }
 
-    return accessToken
+    return user
   }
 
-  private getTokenExpiryDate(): Dayjs {
-    const jwtExpiresIn = Number(this.configService.get("JWT_EXPIRES_IN"))
-    return dayjs().add(jwtExpiresIn, "hour")
+  async verifyGoogleUserOrCreate(
+    providerId: string,
+    profile: Profile,
+    accessToken: string,
+  ) {
+    const user = await this.userService.findUserByProvider({
+      provider: "google",
+      providerId,
+    })
+
+    if (user) return user
+
+    const userCreated = await this.userService.createUser({
+      email: profile.emails?.[0]?.value,
+      emailVerified: profile.emails?.[0]?.verified,
+      isActive: true,
+      password: null,
+      provider: "google",
+      providerId: profile.id,
+      firstName: profile.name.familyName,
+      lastName: profile.name.givenName,
+      role: UserRole.Customer,
+      metadata: {
+        accessToken,
+      },
+      picture: profile.photos?.[0]?.value,
+    })
+
+    return userCreated
   }
 
-  /**
-   * Validates the given credentials.
-   *
-   * @param credentials - The authentication credentials to validate.
-   * @returns A promise that resolves to an `AuthValidatedResult` object.
-   * @throws Error if the user is not found.
-   */
-  async validate(credentials: AuthCredentials): Promise<AuthValidatedResult> {
-    const user = await this.userService.findOneByEmail(credentials.identify)
+  async login(user: UserEntity) {
+    const authTokenPayload: AuthTokenPayload = new AuthTokenPayload({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    })
 
-    if (!user)
-      throw new Error(this.translatorService.t("general.error.notFound"))
+    const authTokenPayloadPlainObject = { ...authTokenPayload }
+
+    const accessToken = this.jwtService.sign(authTokenPayloadPlainObject)
+    const refreshToken =
+      user.refreshToken && this.isRefreshTokenValid(user.refreshToken)
+        ? user.refreshToken
+        : this.jwtService.sign(authTokenPayloadPlainObject, {
+            expiresIn: jwtConstants.refreshExpiresIn,
+          })
+
+    // If the refresh token is not valid, we need to update it
+    if (user.refreshToken !== refreshToken) {
+      await this.userService.updateUser(user.id, {
+        refreshToken,
+      })
+    }
 
     return {
-      isValid: await token.verify(credentials.password, user.password),
-      data: user,
+      accessToken,
+      refreshToken,
+      expiresIn: jwtConstants.expiresIn,
     }
   }
 
-  async login(credentials: AuthCredentials): Promise<string> {
-    const validated = await this.validate(credentials)
+  async refresh(refreshToken: string) {
+    let decoded: AuthTokenPayload | null = null
 
-    if (!validated.isValid)
-      throw new UnauthorizedException(
-        this.translatorService.t("general.error.invalidCredentials"),
+    try {
+      decoded = this.jwtService.verify(refreshToken)
+    } catch (error) {
+      throw new BadRequestException(
+        "Bad request! The refresh token is invalid or expired",
       )
+    }
 
-    const user = validated.data
-    const expiresIn = this.getTokenExpiryDate()
+    if (!decoded) {
+      throw new BadRequestException(
+        "Bad request! The refresh token is invalid or expired",
+      )
+    }
 
-    const accessToken = await this.makeToken(credentials, user, expiresIn)
+    const user = await this.userService.findUserById(decoded.id)
 
-    return accessToken
+    if (user.refreshToken !== refreshToken) {
+      throw new UnauthorizedException("Invalid refresh token")
+    }
+
+    const payload = new AuthTokenPayload({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    })
+
+    const accessToken = this.jwtService.sign({ ...payload })
+
+    return { accessToken, expiresIn: Number(jwtConstants.expiresIn) }
   }
 
-  async signUp(payload: AuthSignupPayload): Promise<UserEntity> {
-    const created = await this.userService.create({
+  signup(payload: SignUpRequest) {
+    return this.userService.createUser({
       email: payload.email,
-      password: payload.password,
       firstName: payload.firstName,
       lastName: payload.lastName,
+      password: payload.password,
+      role: UserRole.Customer,
+      isActive: true,
     })
-
-    return created
   }
-
-  async signOut(accessToken: string): Promise<boolean> {
-    const deletedSession = await this.sessionService.deleteSession(accessToken)
-
-    if (!deletedSession) {
-      throw new BadRequestException(
-        this.translatorService.t("general.error.sessionNotFound"),
-      )
-    }
-
-    return deletedSession
-  }
-
-  async refreshToken(accessToken: string): Promise<string> {
-    const payload = this.jwtService.decode<AuthJwtSignPayload>(accessToken)
-
-    if (!payload) {
-      throw new BadRequestException(
-        this.translatorService.t("general.error.invalidToken"),
-      )
-    }
-
-    const session = await this.sessionService.getSessionByToken(accessToken)
-
-    // If the session exists and the token is still alive, return the token
-    if (session && dayjs(session.expiresAt).toDate() > dayjs().toDate()) {
-      throw new BadRequestException(
-        this.translatorService.t("general.error.tokenAlive"),
-      )
-    }
-    // If the session exists and the token is expired, delete the session
-    if (session && dayjs(session.expiresAt).toDate() < dayjs().toDate()) {
-      this.sessionService.deleteSession(session)
-    }
-
-    const user = await this.userRepository.findOne({
-      where: { id: payload.sub, email: payload.email },
-    })
-
-    // If the user is not found, throw an error
-    if (!user) {
-      throw new BadRequestException(
-        this.translatorService.t("general.error.notFound"),
-      )
-    }
-
-    const expiresIn = this.getTokenExpiryDate()
-
-    const newAccessToken = await this.makeToken(
-      { identify: user.email },
-      user,
-      expiresIn,
-    )
-
-    return newAccessToken
-  }
-
-  // async forgotPassword() {
-  //   // Send email with reset password link
-  // }
-
-  // async resetPassword() {
-  //   // Update user password
-  // }
-
-  // async verifyEmail() {
-  //   // Verify user email
-  // }
-
-  // async resendEmailVerification() {
-  //   // Resend email verification
-  // }
-
-  // async changePassword() {
-  //   // Change user password
-  // }
-
-  // async changeEmail() {
-  //   // Change user email
-  // }
-
-  // async changeUsername() {
-  //   // Change user username
-  // }
 }
