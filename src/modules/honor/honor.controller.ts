@@ -1,12 +1,19 @@
 import { Controller, Inject } from "@nestjs/common"
 import {
-  SlackEventMiddlewareArgs,
+  BlockAction,
+  SlackAction,
+  SlackActionMiddlewareArgs,
   SlackShortcut,
   SlackShortcutMiddlewareArgs,
 } from "@slack/bolt"
-import { Event, Shortcut } from "nestjs-slack-bolt"
+import { Action, Shortcut } from "nestjs-slack-bolt"
 import { SlackService } from "nestjs-slack-bolt/dist/services/slack.service"
+import { HonorHelper } from "./honor.helper"
+import { VOTE_TOPICS } from "./vote.constant"
 import { VoteService } from "./vote.service"
+import { VoteValidate } from "./vote.validate"
+
+// Interface to type the payload state for vote submission
 
 @Controller({
   path: "honor",
@@ -18,6 +25,12 @@ export class HonorController {
   @Inject()
   private readonly voteService: VoteService
 
+  @Inject()
+  private readonly honorHelper: HonorHelper
+
+  @Inject()
+  private readonly voteValidate: VoteValidate
+
   @Shortcut("vote")
   async vote({
     ack,
@@ -27,31 +40,79 @@ export class HonorController {
     ack()
     if (payload.type === "message_action") {
       try {
+        const receiverId = payload.message.user
+        const senderId = payload.user.id
+
         const [receiver, sender] = await Promise.all([
           this.slackService.client.users.profile.get({
-            user: payload.message.user,
+            user: receiverId,
           }),
           this.slackService.client.users.profile.get({
-            user: payload.user.id,
+            user: senderId,
           }),
         ])
 
-        await this.voteService.vote(sender, receiver, {
-          slackChannelId: payload.channel.id,
-          slackChannelName: payload.channel.name,
-          slackClientMessageId: payload.message.client_msg_id,
-          slackTeamId: payload.team.id,
-        })
+        this.voteValidate.throwIfBotOrYourSelf(sender, receiver)
 
         respond({
-          text: "Vote recorded successfully! The leaderboard has been updated.",
           blocks: [
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "✅ Vote recorded successfully! The leaderboard has been updated.",
+                text: `🗳️ You are voting for <@${receiver.profile?.real_name || payload.message.user}>!\n\nPlease select the type of recognition you'd like to give:`,
               },
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "Choose one option:",
+              },
+              accessory: {
+                type: "radio_buttons",
+                options: VOTE_TOPICS.map((voteTopic) => ({
+                  text: {
+                    type: "plain_text",
+                    text: voteTopic.text,
+                  },
+                  value: voteTopic.value,
+                })),
+                action_id: "vote_type_selection",
+              },
+              block_id: "vote_type_selection",
+            },
+            {
+              type: "actions",
+              elements: [
+                {
+                  type: "button",
+                  text: {
+                    type: "plain_text",
+                    text: "Submit Vote",
+                  },
+                  style: "primary",
+                  action_id: "submit_vote",
+                  value: this.honorHelper.submitVote.build({
+                    receiverId,
+                    senderId,
+                    channelId: payload.channel.id,
+                    channelName: payload.channel.name,
+                    clientMessageId: payload.message.client_msg_id,
+                    teamId: payload.team.id,
+                  }),
+                },
+                {
+                  type: "button",
+                  text: {
+                    type: "plain_text",
+                    text: "Cancel Vote",
+                  },
+                  style: "danger",
+                  action_id: "cancel_vote",
+                },
+              ],
+              block_id: "vote_submission_actions",
             },
           ],
         })
@@ -88,15 +149,81 @@ export class HonorController {
     }
   }
 
-  @Event("reaction_added")
-  async reactionAdded({ payload }: SlackEventMiddlewareArgs<"reaction_added">) {
-    const reaction = await this.slackService.client.reactions.get({
-      channel: payload.item.channel,
-      timestamp: payload.item.ts,
+  @Action("submit_vote")
+  async submitVote({
+    ack,
+    body,
+    payload,
+    respond,
+  }: SlackActionMiddlewareArgs<BlockAction>) {
+    ack()
+
+    const { senderId, receiverId, metadata } =
+      this.honorHelper.submitVote.parse(payload)
+
+    const values = body?.state?.values
+    const selectedOption =
+      values?.vote_type_selection?.vote_type_selection?.selected_option
+
+    const [sender, receiver] = await Promise.all([
+      this.slackService.client.users.profile.get({
+        user: senderId,
+      }),
+      this.slackService.client.users.profile.get({
+        user: receiverId,
+      }),
+    ])
+
+    await this.voteService.vote(sender, receiver, {
+      slackChannelId: metadata.channelId,
+      slackChannelName: metadata.channelName,
+      slackClientMessageId: metadata.clientMessageId,
+      slackTeamId: metadata.teamId,
     })
 
-    console.log(reaction)
+    respond({
+      text: `Vote submitted for ${selectedOption.text.text}`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `✅ Vote submitted for "${selectedOption.text.text}".`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: {
+                type: "plain_text",
+                text: "View Leaderboard",
+              },
+              url: "https://falas-good-kids.vercel.app",
+            },
+          ],
+        },
+      ],
+    })
+  }
 
-    // say(`Hello world ${payload?.reaction}`)
+  @Action("cancel_vote")
+  async cancelVote({ ack, respond }: SlackActionMiddlewareArgs<SlackAction>) {
+    ack()
+
+    // Respond with cancellation message
+    respond({
+      text: "Vote cancelled.",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "❌ Vote cancelled. No vote was recorded.",
+          },
+        },
+      ],
+    })
   }
 }

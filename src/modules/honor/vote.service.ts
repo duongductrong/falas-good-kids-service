@@ -1,16 +1,19 @@
-import { BadRequestException, Inject, Injectable } from "@nestjs/common"
+import { Inject, Injectable } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
 import { UsersProfileGetResponse } from "@slack/web-api"
-import { has } from "lodash"
 import { Repository } from "typeorm"
 import { dayjs } from "@/shared/utils/dayjs"
 import { VoteEntity } from "./entities/vote.entity"
 import { PersonService } from "./person.service"
+import { VoteValidate } from "./vote.validate"
 
 @Injectable()
 export class VoteService {
   @Inject()
   private personService: PersonService
+
+  @Inject()
+  private voteValidate: VoteValidate
 
   @InjectRepository(VoteEntity)
   private voteRepository: Repository<VoteEntity>
@@ -25,13 +28,7 @@ export class VoteService {
       slackTeamId?: string
     },
   ) {
-    const isVotedForBot =
-      has(sender.profile, "bot_id") || has(receiver.profile, "bot_id")
-    const isVotedForYourSelf = sender.profile?.email === receiver.profile?.email
-
-    if (isVotedForBot || isVotedForYourSelf) {
-      throw new BadRequestException("You can't vote for a bot or yourself")
-    }
+    this.voteValidate.throwIfBotOrYourSelf(sender, receiver)
 
     // Get or create persons for sender and receiver
     const [senderPerson, receiverPerson] = await Promise.all([
