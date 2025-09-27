@@ -8,51 +8,49 @@ import {
 } from "@slack/bolt"
 import { Action, Shortcut } from "nestjs-slack-bolt"
 import { SlackService } from "nestjs-slack-bolt/dist/services/slack.service"
-import { HonorHelper } from "./honor.helper"
-import { VOTE_TOPICS } from "./vote.constant"
-import { VoteService } from "./vote.service"
-import { VoteValidate } from "./vote.validate"
+import { VOTE_TOPICS } from "../vote.constant"
+import { VoteService } from "../vote.service"
+import {
+  VOTE_SLACK_ACTION_ID,
+  VOTE_SLACK_SHORTCUT,
+} from "./vote.slack.constant"
+import { VoteHelper } from "./vote.slack.helper"
+import { VoteSlackService } from "./vote.slack.service"
+import { VoteSlackValidate } from "./vote.slack.validate"
 
-// Interface to type the payload state for vote submission
-
-@Controller({
-  path: "honor",
-})
-export class HonorController {
+@Controller({})
+export class VoteSlackController {
   @Inject()
   private readonly slackService: SlackService
+
+  @Inject()
+  private readonly voteSlackService: VoteSlackService
 
   @Inject()
   private readonly voteService: VoteService
 
   @Inject()
-  private readonly honorHelper: HonorHelper
+  private readonly voteSlackValidate: VoteSlackValidate
 
   @Inject()
-  private readonly voteValidate: VoteValidate
+  private readonly voteHelper: VoteHelper
 
-  @Shortcut("vote")
+  @Shortcut(VOTE_SLACK_SHORTCUT.VOTE)
   async vote({
     ack,
     payload,
     respond,
   }: SlackShortcutMiddlewareArgs<SlackShortcut>) {
     ack()
-    if (payload.type === "message_action") {
-      try {
+    try {
+      if (payload.type === "message_action") {
         const receiverId = payload.message.user
         const senderId = payload.user.id
 
-        const [receiver, sender] = await Promise.all([
-          this.slackService.client.users.profile.get({
-            user: receiverId,
-          }),
-          this.slackService.client.users.profile.get({
-            user: senderId,
-          }),
-        ])
+        const { sender, receiver } =
+          await this.voteSlackService.getParticipants({ receiverId, senderId })
 
-        this.voteValidate.throwIfBotOrYourSelf(sender, receiver)
+        this.voteSlackValidate.throwIfBotOrYourSelf(sender, receiver)
 
         respond({
           blocks: [
@@ -92,8 +90,8 @@ export class HonorController {
                     text: "Submit Vote",
                   },
                   style: "primary",
-                  action_id: "submit_vote",
-                  value: this.honorHelper.submitVote.build({
+                  action_id: VOTE_SLACK_ACTION_ID.SUBMIT_ACTION,
+                  value: this.voteHelper.submitVote.build({
                     receiverId,
                     senderId,
                     channelId: payload.channel.id,
@@ -109,47 +107,20 @@ export class HonorController {
                     text: "Cancel Vote",
                   },
                   style: "danger",
-                  action_id: "cancel_vote",
+                  action_id: VOTE_SLACK_ACTION_ID.CANCEL_ACTION,
                 },
               ],
               block_id: "vote_submission_actions",
             },
           ],
         })
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          respond({
-            text: error.message,
-            blocks: [
-              {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: `${error.message}`,
-                },
-              },
-            ],
-          })
-          return
-        }
-
-        respond({
-          text: "An unknown error occurred",
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "An unknown error occurred",
-              },
-            },
-          ],
-        })
       }
+    } catch (error) {
+      this.voteSlackService.respondException(respond, error)
     }
   }
 
-  @Action("submit_vote")
+  @Action(VOTE_SLACK_ACTION_ID.SUBMIT_ACTION)
   async submitVote({
     ack,
     body,
@@ -159,20 +130,18 @@ export class HonorController {
     ack()
 
     const { senderId, receiverId, metadata } =
-      this.honorHelper.submitVote.parse(payload)
+      this.voteHelper.submitVote.parse(payload)
 
     const values = body?.state?.values
     const selectedOption =
       values?.vote_type_selection?.vote_type_selection?.selected_option
 
-    const [sender, receiver] = await Promise.all([
-      this.slackService.client.users.profile.get({
-        user: senderId,
-      }),
-      this.slackService.client.users.profile.get({
-        user: receiverId,
-      }),
-    ])
+    const { sender, receiver } = await this.voteSlackService.getParticipants({
+      receiverId,
+      senderId,
+    })
+
+    this.voteSlackValidate.throwIfBotOrYourSelf(sender, receiver)
 
     await this.voteService.vote(sender, receiver, {
       slackChannelId: metadata.channelId,
@@ -182,13 +151,13 @@ export class HonorController {
     })
 
     respond({
-      text: `Vote submitted for ${selectedOption.text.text}`,
+      text: `Vote successfully submitted! 🎉`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `✅ Vote submitted for "${selectedOption.text.text}".`,
+            text: `🎉 *Vote Successfully Submitted!*\n\nYou voted for *${receiver.profile?.display_name || receiver.profile?.real_name}* in the "${selectedOption?.text?.text}" category.\n\nThank you for participating in recognizing your teammates! 🌟`,
           },
         },
         {
@@ -208,7 +177,7 @@ export class HonorController {
     })
   }
 
-  @Action("cancel_vote")
+  @Action(VOTE_SLACK_ACTION_ID.CANCEL_ACTION)
   async cancelVote({ ack, respond }: SlackActionMiddlewareArgs<SlackAction>) {
     ack()
 

@@ -1,8 +1,8 @@
 import { Injectable } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
 import { Repository } from "typeorm"
-import { PersonEntity } from "./entities/person.entity"
-import { VoteEntity } from "./entities/vote.entity"
+import { PersonEntity } from "../person/entities/person.entity"
+import { VoteEntity } from "../vote/entities/vote.entity"
 
 @Injectable()
 export class LoaderboardService {

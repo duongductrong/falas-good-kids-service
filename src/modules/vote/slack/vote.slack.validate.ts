@@ -3,7 +3,7 @@ import { UsersProfileGetResponse } from "@slack/web-api"
 import { has } from "lodash"
 
 @Injectable()
-export class VoteValidate {
+export class VoteSlackValidate {
   throwIfBotOrYourSelf(
     sender: UsersProfileGetResponse,
     receiver: UsersProfileGetResponse,

@@ -3,9 +3,9 @@ import { InjectRepository } from "@nestjs/typeorm"
 import { UsersProfileGetResponse } from "@slack/web-api"
 import { Repository } from "typeorm"
 import { dayjs } from "@/shared/utils/dayjs"
+import { PersonService } from "../person/person.service"
 import { VoteEntity } from "./entities/vote.entity"
-import { PersonService } from "./person.service"
-import { VoteValidate } from "./vote.validate"
+import { VoteSlackValidate } from "./slack/vote.slack.validate"
 
 @Injectable()
 export class VoteService {
@@ -13,7 +13,7 @@ export class VoteService {
   private personService: PersonService
 
   @Inject()
-  private voteValidate: VoteValidate
+  private voteSlackValidate: VoteSlackValidate
 
   @InjectRepository(VoteEntity)
   private voteRepository: Repository<VoteEntity>
@@ -28,7 +28,7 @@ export class VoteService {
       slackTeamId?: string
     },
   ) {
-    this.voteValidate.throwIfBotOrYourSelf(sender, receiver)
+    this.voteSlackValidate.throwIfBotOrYourSelf(sender, receiver)
 
     // Get or create persons for sender and receiver
     const [senderPerson, receiverPerson] = await Promise.all([

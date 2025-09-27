@@ -10,7 +10,7 @@ interface SubmitVotePayload {
 }
 
 @Injectable()
-export class HonorHelper {
+export class VoteHelper {
   get submitVote() {
     return {
       build(payload: SubmitVotePayload) {

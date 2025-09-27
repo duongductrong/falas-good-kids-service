@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm"
-import { VoteEntity } from "./vote.entity"
+import { VoteEntity } from "../../vote/entities/vote.entity"
 
 @Entity({
   name: "persons",
