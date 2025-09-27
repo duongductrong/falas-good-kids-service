@@ -21,6 +21,9 @@ const config: UserConfig = {
         "temp",
       ],
     ],
+    "header-max-length": [0],
+    "body-max-length": [0],
+    "footer-max-length": [0],
   },
   "subject-case": [0],
 }
