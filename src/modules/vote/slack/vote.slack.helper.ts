@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common"
+import { BlockAction } from "@slack/bolt"
 
 interface SubmitVotePayload {
   senderId: string
@@ -10,7 +11,7 @@ interface SubmitVotePayload {
 }
 
 @Injectable()
-export class VoteHelper {
+export class VoteSlackHelper {
   get submitVote() {
     return {
       build(payload: SubmitVotePayload) {
@@ -38,5 +39,13 @@ export class VoteHelper {
         }
       },
     }
+  }
+
+  getSelectedOption(body: BlockAction) {
+    const values = body?.state?.values
+    const selectedOption =
+      values?.vote_type_selection?.vote_type_selection?.selected_option
+
+    return selectedOption
   }
 }

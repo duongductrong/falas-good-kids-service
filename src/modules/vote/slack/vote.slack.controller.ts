@@ -12,7 +12,7 @@ import {
   VOTE_SLACK_ACTION_ID,
   VOTE_SLACK_SHORTCUT,
 } from "./vote.slack.constant"
-import { VoteHelper } from "./vote.slack.helper"
+import { VoteSlackHelper } from "./vote.slack.helper"
 import { VoteSlackService } from "./vote.slack.service"
 import { VoteSlackValidate } from "./vote.slack.validate"
 
@@ -28,7 +28,7 @@ export class VoteSlackController {
   private readonly voteSlackValidate: VoteSlackValidate
 
   @Inject()
-  private readonly voteHelper: VoteHelper
+  private readonly voteSlackHelper: VoteSlackHelper
 
   @Shortcut(VOTE_SLACK_SHORTCUT.VOTE)
   async vote({
@@ -89,7 +89,7 @@ export class VoteSlackController {
                   },
                   style: "primary",
                   action_id: VOTE_SLACK_ACTION_ID.SUBMIT_ACTION,
-                  value: this.voteHelper.submitVote.build({
+                  value: this.voteSlackHelper.submitVote.build({
                     receiverId,
                     senderId,
                     channelId: payload.channel.id,
@@ -125,54 +125,56 @@ export class VoteSlackController {
     payload,
     respond,
   }: SlackActionMiddlewareArgs<BlockAction>) {
-    ack()
+    try {
+      await ack()
 
-    const { senderId, receiverId, metadata } =
-      this.voteHelper.submitVote.parse(payload)
+      const { senderId, receiverId, metadata } =
+        this.voteSlackHelper.submitVote.parse(payload)
 
-    const values = body?.state?.values
-    const selectedOption =
-      values?.vote_type_selection?.vote_type_selection?.selected_option
+      const selectedOption = this.voteSlackHelper.getSelectedOption(body)
 
-    const { sender, receiver } = await this.voteSlackService.getParticipants({
-      receiverId,
-      senderId,
-    })
+      const { sender, receiver } = await this.voteSlackService.getParticipants({
+        receiverId,
+        senderId,
+      })
 
-    this.voteSlackValidate.throwIfBotOrYourSelf(sender, receiver)
+      this.voteSlackValidate.throwIfBotOrYourSelf(sender, receiver)
 
-    await this.voteService.vote(sender, receiver, {
-      slackChannelId: metadata.channelId,
-      slackChannelName: metadata.channelName,
-      slackClientMessageId: metadata.clientMessageId,
-      slackTeamId: metadata.teamId,
-    })
+      await this.voteService.vote(sender, receiver, {
+        slackChannelId: metadata.channelId,
+        slackChannelName: metadata.channelName,
+        slackClientMessageId: metadata.clientMessageId,
+        slackTeamId: metadata.teamId,
+      })
 
-    respond({
-      text: `Vote successfully submitted! 🎉`,
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `🎉 *Vote Successfully Submitted!*\n\nYou voted for *${receiver.profile?.display_name || receiver.profile?.real_name}* in the "${selectedOption?.text?.text}" category.\n\nThank you for participating in recognizing your teammates! 🌟`,
-          },
-        },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: {
-                type: "plain_text",
-                text: "View Leaderboard",
-              },
-              url: "https://falas-good-kids.vercel.app",
+      respond({
+        text: `Vote successfully submitted! 🎉`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `🎉 *Vote Successfully Submitted!*\n\nYou voted for *${receiver.profile?.display_name || receiver.profile?.real_name}* in the "${selectedOption?.text?.text}" category.\n\nThank you for participating in recognizing your teammates! 🌟`,
             },
-          ],
-        },
-      ],
-    })
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "View Leaderboard",
+                },
+                url: "https://falas-good-kids.vercel.app",
+              },
+            ],
+          },
+        ],
+      })
+    } catch (error) {
+      this.voteSlackService.respondException(respond, error)
+    }
   }
 
   @Action(VOTE_SLACK_ACTION_ID.CANCEL_ACTION)
