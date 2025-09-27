@@ -4,19 +4,23 @@ import { UsersProfileGetResponse } from "@slack/web-api"
 import { Repository } from "typeorm"
 import { dayjs } from "@/shared/utils/dayjs"
 import { PersonService } from "../person/person.service"
+import { VoteTopicEntity } from "./entities/vote-topic.entity"
 import { VoteEntity } from "./entities/vote.entity"
 import { VoteSlackValidate } from "./slack/vote.slack.validate"
 
 @Injectable()
 export class VoteService {
+  @InjectRepository(VoteEntity)
+  private voteRepository: Repository<VoteEntity>
+
+  @InjectRepository(VoteTopicEntity)
+  private voteTopicRepository: Repository<VoteTopicEntity>
+
   @Inject()
   private personService: PersonService
 
   @Inject()
   private voteSlackValidate: VoteSlackValidate
-
-  @InjectRepository(VoteEntity)
-  private voteRepository: Repository<VoteEntity>
 
   async vote(
     sender: UsersProfileGetResponse,
@@ -43,5 +47,13 @@ export class VoteService {
       votedDate: dayjs().toDate(),
       metadata: {},
     })
+  }
+
+  async getActiveVoteTopics() {
+    return this.voteTopicRepository.find({ where: { active: true } })
+  }
+
+  async createManyTopics(topics: Partial<VoteTopicEntity>[]) {
+    return this.voteTopicRepository.save(topics)
   }
 }

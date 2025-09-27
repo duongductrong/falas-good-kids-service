@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from "typeorm"
 import { PersonEntity } from "../../person/entities/person.entity"
+import { VoteTopicEntity } from "./vote-topic.entity"
 
 @Entity({
   name: "votes",
@@ -39,6 +40,9 @@ export class VoteEntity {
     nullable: true,
   })
   slackClientMessageId?: string
+
+  @ManyToOne(() => VoteTopicEntity, (topic) => topic.votes)
+  topic: VoteTopicEntity
 
   @Column({
     nullable: true,

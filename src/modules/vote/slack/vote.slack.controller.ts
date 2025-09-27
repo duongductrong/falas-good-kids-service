@@ -7,8 +7,6 @@ import {
   SlackShortcutMiddlewareArgs,
 } from "@slack/bolt"
 import { Action, Shortcut } from "nestjs-slack-bolt"
-import { SlackService } from "nestjs-slack-bolt/dist/services/slack.service"
-import { VOTE_TOPICS } from "../vote.constant"
 import { VoteService } from "../vote.service"
 import {
   VOTE_SLACK_ACTION_ID,
@@ -20,9 +18,6 @@ import { VoteSlackValidate } from "./vote.slack.validate"
 
 @Controller({})
 export class VoteSlackController {
-  @Inject()
-  private readonly slackService: SlackService
-
   @Inject()
   private readonly voteSlackService: VoteSlackService
 
@@ -41,8 +36,9 @@ export class VoteSlackController {
     payload,
     respond,
   }: SlackShortcutMiddlewareArgs<SlackShortcut>) {
-    ack()
     try {
+      await ack()
+
       if (payload.type === "message_action") {
         const receiverId = payload.message.user
         const senderId = payload.user.id
@@ -51,6 +47,8 @@ export class VoteSlackController {
           await this.voteSlackService.getParticipants({ receiverId, senderId })
 
         this.voteSlackValidate.throwIfBotOrYourSelf(sender, receiver)
+
+        const topics = await this.voteService.getActiveVoteTopics()
 
         respond({
           blocks: [
@@ -69,12 +67,12 @@ export class VoteSlackController {
               },
               accessory: {
                 type: "radio_buttons",
-                options: VOTE_TOPICS.map((voteTopic) => ({
+                options: topics.map((topic) => ({
                   text: {
                     type: "plain_text",
-                    text: voteTopic.text,
+                    text: topic.text,
                   },
-                  value: voteTopic.value,
+                  value: topic.value,
                 })),
                 action_id: "vote_type_selection",
               },
@@ -104,7 +102,7 @@ export class VoteSlackController {
                   type: "button",
                   text: {
                     type: "plain_text",
-                    text: "Cancel Vote",
+                    text: "Cancel",
                   },
                   style: "danger",
                   action_id: VOTE_SLACK_ACTION_ID.CANCEL_ACTION,
