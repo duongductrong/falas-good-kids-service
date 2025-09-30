@@ -28,14 +28,14 @@ export class CreatePersonVoteTables1758723590966 implements MigrationInterface {
                 "created_at" TIMESTAMP NOT NULL DEFAULT now(),
                 "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
                 "deleted_at" TIMESTAMP,
-                "voted_to_id" integer,
+                "voted_for_id" integer,
                 "voted_by_id" integer,
                 CONSTRAINT "PK_f3d9fd4a0af865152c3f59db8ff" PRIMARY KEY ("id")
             )
         `)
     await queryRunner.query(`
             ALTER TABLE "votes"
-            ADD CONSTRAINT "FK_d26356667b00a4382855804f08e" FOREIGN KEY ("voted_to_id") REFERENCES "persons"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+            ADD CONSTRAINT "FK_d26356667b00a4382855804f08e" FOREIGN KEY ("voted_for_id") REFERENCES "persons"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `)
     await queryRunner.query(`
             ALTER TABLE "votes"

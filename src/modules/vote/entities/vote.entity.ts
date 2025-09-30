@@ -20,11 +20,16 @@ export class VoteEntity {
   @Column({ type: "date" })
   votedDate: Date
 
-  @ManyToOne(() => PersonEntity)
-  votedTo: PersonEntity
+  @ManyToOne(() => PersonEntity, (person) => person.votesReceived)
+  votedFor: PersonEntity
 
-  @ManyToOne(() => PersonEntity, (person) => person.votes)
-  votedBy: PersonEntity
+  @ManyToOne(() => PersonEntity, (person) => person.votesGiven, {
+    nullable: true,
+  })
+  votedBy?: PersonEntity
+
+  @Column({ nullable: true })
+  votedByAnonymous: string
 
   @Column({
     nullable: true,

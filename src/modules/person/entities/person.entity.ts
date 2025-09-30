@@ -22,8 +22,11 @@ export class PersonEntity {
   @Column()
   email: string
 
+  @OneToMany(() => VoteEntity, (vote) => vote.votedFor)
+  votesReceived: VoteEntity[]
+
   @OneToMany(() => VoteEntity, (vote) => vote.votedBy)
-  votes: VoteEntity[]
+  votesGiven: VoteEntity[]
 
   @Column({ nullable: true })
   avatar?: string

@@ -34,4 +34,16 @@ export class PersonService {
 
     return person
   }
+
+  async findOne(identify: string | number) {
+    if (typeof identify === "number" || !Number.isNaN(Number(identify))) {
+      return this.personRepository.findOne({
+        where: { id: Number(identify) },
+      })
+    }
+
+    return this.personRepository.findOne({
+      where: { email: String(identify) },
+    })
+  }
 }
