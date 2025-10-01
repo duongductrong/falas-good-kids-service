@@ -15,15 +15,16 @@ export class LeaderboardService {
   private personRepository: Repository<PersonEntity>
 
   getLeaderboard(body: GetLeaderboardRequest) {
-    const { range } = body
+    const { range, sortOrder } = body
 
     const leaderboardRange = getLeaderboardRange(range)
 
     let rootQuery = this.personRepository
       .createQueryBuilder("person")
       .leftJoin(VoteEntity, "vote", "vote.voted_for_id = person.id")
+      .leftJoin(PersonEntity, "voter", "voter.id = vote.voted_by_id")
       .groupBy("person.id, vote.voted_for_id")
-      .orderBy("COUNT(vote.id)", "DESC")
+      .orderBy("COUNT(vote.id)", sortOrder.toString() as "ASC" | "DESC")
 
     if (leaderboardRange) {
       const [startDate, endDate] = leaderboardRange
@@ -41,8 +42,20 @@ export class LeaderboardService {
       .addSelect("person.realName", "realName")
       .addSelect("person.avatar", "avatar")
       .addSelect("CAST(COUNT(vote.id) AS INTEGER)", "scores")
-      .setParameters(
-        this.voteRepository.createQueryBuilder("vote").getParameters(),
+      .addSelect(
+        `
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', voter.id,
+              'realName', voter."real_name",
+              'avatar', voter."avatar"
+            )
+          ) FILTER (WHERE voter.id IS NOT NULL),
+        '[]'
+      )  
+      `,
+        "senders",
       )
 
     return rootQuery.getRawMany()
