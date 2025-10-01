@@ -42,21 +42,41 @@ export class LeaderboardService {
       .addSelect("person.realName", "realName")
       .addSelect("person.avatar", "avatar")
       .addSelect("CAST(COUNT(vote.id) AS INTEGER)", "scores")
-      .addSelect(
-        `
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object(
-              'id', voter.id,
-              'realName', voter."real_name",
-              'avatar', voter."avatar"
-            )
-          ) FILTER (WHERE voter.id IS NOT NULL),
-        '[]'
-      )  
-      `,
-        "senders",
-      )
+      .addSelect((db) => {
+        return db
+          .subQuery()
+          .select(
+            `COALESCE(
+              json_agg(
+                DISTINCT jsonb_build_object(
+                  'id', voter.id,
+                  'realName', voter."real_name",
+                  'avatar', voter."avatar"
+                )
+              ),
+              '[]'
+            )`,
+          )
+          .from(VoteEntity, "vote")
+          .innerJoin(PersonEntity, "voter", "voter.id = vote.voted_by_id")
+          .where("voter.id = vote.voted_by_id")
+          .limit(5)
+      }, "senders")
+    // .addSelect(
+    //   `
+    //   COALESCE(
+    //     json_agg(
+    //       DISTINCT jsonb_build_object(
+    //         'id', voter.id,
+    //         'realName', voter."real_name",
+    //         'avatar', voter."avatar"
+    //       )
+    //     ) FILTER (WHERE voter.id IS NOT NULL),
+    //   '[]'
+    // )
+    // `,
+    //   "senders",
+    // )
 
     return rootQuery.getRawMany()
   }
