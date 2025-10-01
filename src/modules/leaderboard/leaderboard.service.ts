@@ -41,6 +41,7 @@ export class LeaderboardService {
       .select("person.id", "id")
       .addSelect("person.realName", "realName")
       .addSelect("person.avatar", "avatar")
+      .addSelect("person.email", "email")
       .addSelect("CAST(COUNT(vote.id) AS INTEGER)", "scores")
       .addSelect((db) => {
         return db
@@ -59,24 +60,9 @@ export class LeaderboardService {
           )
           .from(VoteEntity, "vote")
           .innerJoin(PersonEntity, "voter", "voter.id = vote.voted_by_id")
-          .where("voter.id = vote.voted_by_id")
+          .where("voter.id = vote.voted_by_id and person.id != voter.id")
           .limit(5)
-      }, "senders")
-    // .addSelect(
-    //   `
-    //   COALESCE(
-    //     json_agg(
-    //       DISTINCT jsonb_build_object(
-    //         'id', voter.id,
-    //         'realName', voter."real_name",
-    //         'avatar', voter."avatar"
-    //       )
-    //     ) FILTER (WHERE voter.id IS NOT NULL),
-    //   '[]'
-    // )
-    // `,
-    //   "senders",
-    // )
+      }, "voters")
 
     return rootQuery.getRawMany()
   }
