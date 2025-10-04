@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional } from "class-validator"
+import { IsEnum, IsNumber, IsOptional } from "class-validator"
 import { LeaderboardRange, LeaderboardSortOrder } from "../leaderboard.enum"
 
 export class GetLeaderboardRequest {
@@ -9,4 +9,8 @@ export class GetLeaderboardRequest {
   @IsEnum(LeaderboardSortOrder)
   @IsOptional()
   sortOrder: LeaderboardSortOrder = LeaderboardSortOrder.DESC
+
+  @IsNumber()
+  @IsOptional()
+  size?: number
 }

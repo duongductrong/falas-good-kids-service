@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
+import { isNil } from "lodash"
 import { Repository } from "typeorm"
 import { VoteEntity } from "@/modules/vote/entities/vote.entity"
 import { PersonEntity } from "@/modules/person/entities/person.entity"
@@ -15,7 +16,7 @@ export class LeaderboardService {
   private personRepository: Repository<PersonEntity>
 
   getLeaderboard(body: GetLeaderboardRequest) {
-    const { range, sortOrder } = body
+    const { range, sortOrder, size } = body
 
     const leaderboardRange = getLeaderboardRange(range)
 
@@ -60,9 +61,16 @@ export class LeaderboardService {
           )
           .from(VoteEntity, "vote")
           .innerJoin(PersonEntity, "voter", "voter.id = vote.voted_by_id")
-          .where("voter.id = vote.voted_by_id and person.id != voter.id")
+          .where(
+            "voter.id = vote.voted_by_id AND vote.voted_for_id != voter.id",
+          )
+          .where("vote.voted_for_id = person.id")
           .limit(5)
       }, "voters")
+
+    if (!isNil(size)) {
+      rootQuery = rootQuery.limit(size)
+    }
 
     return rootQuery.getRawMany()
   }
