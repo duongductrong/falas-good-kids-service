@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
 import { isNil } from "lodash"
 import { Repository } from "typeorm"
+import { dayjs } from "@/shared/utils/dayjs"
 import { VoteEntity } from "@/modules/vote/entities/vote.entity"
 import { PersonEntity } from "@/modules/person/entities/person.entity"
 import { GetLeaderboardRequest } from "./dtos/get-leaderboard.dto"
@@ -16,7 +17,7 @@ export class LeaderboardService {
   private personRepository: Repository<PersonEntity>
 
   getLeaderboard(body: GetLeaderboardRequest) {
-    const { range, sortOrder, size, topicId } = body
+    const { range, sortOrder, size, topicId, duration } = body
 
     const leaderboardRange = getLeaderboardRange(range)
 
@@ -77,6 +78,48 @@ export class LeaderboardService {
       rootQuery = rootQuery.limit(size)
     }
 
+    if (!isNil(duration)) {
+      const durationParsed = dayjs.tz(
+        `01.${duration}`,
+        "DD.MM.YYYY",
+        "Asia/Ho_Chi_Minh",
+      )
+
+      rootQuery.where("vote.voted_date BETWEEN :startDate AND :endDate", {
+        startDate: durationParsed.startOf("month").toDate(),
+        endDate: durationParsed.endOf("month").toDate(),
+      })
+    }
+
     return rootQuery.getRawMany()
+  }
+
+  async getLeaderboardRange() {
+    const [[oldestVote], [newestVote]] = await Promise.all([
+      this.voteRepository.find({
+        order: {
+          createdAt: "ASC",
+        },
+        take: 1,
+      }),
+      this.voteRepository.find({
+        order: {
+          createdAt: "DESC",
+        },
+        take: 1,
+      }),
+    ])
+
+    const oldestVoteDayjs = dayjs(oldestVote.createdAt).tz("Asia/Ho_Chi_Minh")
+    const newestVoteDayjs = dayjs(newestVote.createdAt).tz("Asia/Ho_Chi_Minh")
+
+    return {
+      from: [oldestVoteDayjs.get("month") + 1, oldestVoteDayjs.get("year")],
+      to: [newestVoteDayjs.get("month") + 1, newestVoteDayjs.get("year")],
+      range: [
+        oldestVoteDayjs.startOf("month").unix(),
+        newestVoteDayjs.endOf("month").unix(),
+      ],
+    }
   }
 }

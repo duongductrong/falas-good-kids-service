@@ -18,4 +18,13 @@ export class LeaderboardController {
       .setData(leaderboard)
       .build()
   }
+
+  @Get("range")
+  async getLeaderboardRange() {
+    const range = await this.leaderboardService.getLeaderboardRange()
+    return ApiBuilder.create()
+      .setMessage("Leaderboard range fetched successfully")
+      .setData(range)
+      .build()
+  }
 }

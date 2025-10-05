@@ -1,6 +1,5 @@
 export enum LeaderboardRange {
-  CURRENT_MONTH = "current_month",
-  CURRENT_YEAR = "current_year",
+  MONTHLY = "monthly",
   ALL_TIME = "all_time",
 }
 
