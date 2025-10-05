@@ -35,6 +35,7 @@ export class VoteService {
   async vote(
     sender: UsersProfileGetResponse,
     receiver: UsersProfileGetResponse,
+    topic: VoteTopicEntity,
     slackMetadata?: {
       slackChannelId?: string
       slackChannelName?: string
@@ -52,6 +53,7 @@ export class VoteService {
 
     return this.voteRepository.save({
       ...slackMetadata,
+      topic,
       votedBy: senderPerson,
       votedFor: receiverPerson,
       votedDate: dayjs().toDate(),
@@ -124,5 +126,17 @@ export class VoteService {
 
   async createManyTopics(topics: Partial<VoteTopicEntity>[]) {
     return this.voteTopicRepository.save(topics)
+  }
+
+  async getTopic(value: number | string) {
+    if (typeof value === "number") {
+      return this.voteTopicRepository.findOne({
+        where: { id: value, active: true },
+      })
+    }
+
+    return this.voteTopicRepository.findOne({
+      where: { value, active: true },
+    })
   }
 }

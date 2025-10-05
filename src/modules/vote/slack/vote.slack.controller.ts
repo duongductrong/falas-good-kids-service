@@ -1,4 +1,4 @@
-import { Controller, Inject } from "@nestjs/common"
+import { BadRequestException, Controller, Inject } from "@nestjs/common"
 import {
   BlockAction,
   SlackAction,
@@ -140,7 +140,15 @@ export class VoteSlackController {
 
       this.voteSlackValidate.throwIfBotOrYourSelf(sender, receiver)
 
-      await this.voteService.vote(sender, receiver, {
+      const topic = await this.voteService.getTopic(selectedOption?.value)
+
+      if (!topic) {
+        throw new BadRequestException(
+          "The selected option (topic) is not valid",
+        )
+      }
+
+      await this.voteService.vote(sender, receiver, topic, {
         slackChannelId: metadata.channelId,
         slackChannelName: metadata.channelName,
         slackClientMessageId: metadata.clientMessageId,

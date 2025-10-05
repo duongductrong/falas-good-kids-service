@@ -6,7 +6,6 @@ import { dayjs } from "@/shared/utils/dayjs"
 import { VoteEntity } from "@/modules/vote/entities/vote.entity"
 import { PersonEntity } from "@/modules/person/entities/person.entity"
 import { GetLeaderboardRequest } from "./dtos/get-leaderboard.dto"
-import { getLeaderboardRange } from "./leaderboard.helper"
 
 @Injectable()
 export class LeaderboardService {
@@ -17,9 +16,7 @@ export class LeaderboardService {
   private personRepository: Repository<PersonEntity>
 
   getLeaderboard(body: GetLeaderboardRequest) {
-    const { range, sortOrder, size, topicId, duration } = body
-
-    const leaderboardRange = getLeaderboardRange(range)
+    const { sortOrder, size, topicId, duration } = body
 
     let rootQuery = this.personRepository
       .createQueryBuilder("person")
@@ -28,18 +25,26 @@ export class LeaderboardService {
       .groupBy("person.id, vote.voted_for_id")
       .orderBy("COUNT(vote.id)", sortOrder.toString() as "ASC" | "DESC")
 
-    // Filter by topic if provided
     if (topicId) {
       rootQuery = rootQuery.andWhere("vote.topic_id = :topicId", { topicId })
     }
 
-    if (leaderboardRange) {
-      const [startDate, endDate] = leaderboardRange
+    if (!isNil(size)) {
+      rootQuery = rootQuery.limit(size)
+    }
+
+    if (!isNil(duration)) {
+      const durationParsed = dayjs.tz(
+        `01.${duration}`,
+        "DD.MM.YYYY",
+        "Asia/Ho_Chi_Minh",
+      )
+
       rootQuery = rootQuery.andWhere(
         "vote.voted_date BETWEEN :startDate AND :endDate",
         {
-          startDate,
-          endDate,
+          startDate: durationParsed.startOf("month").toDate(),
+          endDate: durationParsed.endOf("month").toDate(),
         },
       )
     }
@@ -73,23 +78,6 @@ export class LeaderboardService {
           .where("vote.voted_for_id = person.id")
           .limit(5)
       }, "voters")
-
-    if (!isNil(size)) {
-      rootQuery = rootQuery.limit(size)
-    }
-
-    if (!isNil(duration)) {
-      const durationParsed = dayjs.tz(
-        `01.${duration}`,
-        "DD.MM.YYYY",
-        "Asia/Ho_Chi_Minh",
-      )
-
-      rootQuery.where("vote.voted_date BETWEEN :startDate AND :endDate", {
-        startDate: durationParsed.startOf("month").toDate(),
-        endDate: durationParsed.endOf("month").toDate(),
-      })
-    }
 
     return rootQuery.getRawMany()
   }
