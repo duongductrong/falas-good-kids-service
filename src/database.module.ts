@@ -22,9 +22,10 @@ configDotenv({})
 
         return {
           url: configService.get<string>("DATABASE_URL"),
-          type: configService.get<DataSourceOptions["type"]>(
-            "DATABASE_TYPE",
-          ) as "postgres",
+          type:
+            (configService.get<DataSourceOptions["type"]>(
+              "DATABASE_TYPE",
+            ) as "postgres") || "postgres",
           host: configService.get<string>("DATABASE_HOST"),
           port: parseInt(configService.get<string>("DATABASE_PORT"), 10),
           username: configService.get<string>("DATABASE_USER"),
