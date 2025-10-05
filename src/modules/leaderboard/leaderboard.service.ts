@@ -98,6 +98,14 @@ export class LeaderboardService {
       }),
     ])
 
+    if (!oldestVote || !newestVote) {
+      return {
+        from: [dayjs().get("month") + 1, dayjs().get("year")],
+        to: [dayjs().get("month") + 1, dayjs().get("year")],
+        range: [dayjs().startOf("month").unix(), dayjs().endOf("month").unix()],
+      }
+    }
+
     const oldestVoteDayjs = dayjs(oldestVote.createdAt).tz("Asia/Ho_Chi_Minh")
     const newestVoteDayjs = dayjs(newestVote.createdAt).tz("Asia/Ho_Chi_Minh")
 
