@@ -17,6 +17,9 @@ export class VoteEntity {
   @PrimaryGeneratedColumn()
   id: number
 
+  @Column({ nullable: true })
+  message?: string
+
   @Column({ type: "date" })
   votedDate: Date
 

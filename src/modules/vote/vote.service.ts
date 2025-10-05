@@ -54,7 +54,7 @@ export class VoteService {
 
   async voteByAnonymous(payload: CreateAnonymousVoteRequest) {
     try {
-      const { topicId, receiverId, anonymous } = payload
+      const { topicId, receiverId, anonymous, message } = payload
 
       const [receiver, topic] = await Promise.all([
         this.personService.findOne(receiverId),
@@ -77,6 +77,7 @@ export class VoteService {
         votedDate: dayjs().toDate(),
         metadata: {},
         topic,
+        message,
       })
 
       return voted

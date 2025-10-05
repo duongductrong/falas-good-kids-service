@@ -3,11 +3,11 @@ import { IsDefined, IsNumber, IsOptional, IsString } from "class-validator"
 export class CreateAnonymousVoteRequest {
   @IsNumber()
   @IsDefined({ message: "Topic ID is required" })
-  topicId: number | string
+  topicId: number
 
   @IsNumber()
   @IsDefined({ message: "Receiver ID is required" })
-  receiverId: number | string
+  receiverId: number
 
   @IsString()
   @IsDefined({ message: "Anonymous ID is required" })
@@ -16,4 +16,8 @@ export class CreateAnonymousVoteRequest {
   @IsString()
   @IsOptional()
   email?: string
+
+  @IsString()
+  @IsDefined({ message: "Message is required" })
+  message?: string
 }
