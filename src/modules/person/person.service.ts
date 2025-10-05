@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common"
+import { Injectable, NotFoundException } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
 import { UsersProfileGetResponse } from "@slack/web-api"
 import { Repository } from "typeorm"
@@ -37,13 +37,29 @@ export class PersonService {
 
   async findOne(identify: string | number) {
     if (typeof identify === "number" || !Number.isNaN(Number(identify))) {
-      return this.personRepository.findOne({
+      const result = await this.personRepository.findOne({
         where: { id: Number(identify) },
       })
+
+      if (!result) {
+        throw new NotFoundException("Person not found")
+      }
+
+      return result
     }
 
-    return this.personRepository.findOne({
+    const result = await this.personRepository.findOne({
       where: { email: String(identify) },
     })
+
+    if (!result) {
+      throw new NotFoundException("Person not found")
+    }
+
+    return result
+  }
+
+  async findAll() {
+    return this.personRepository.find({})
   }
 }
