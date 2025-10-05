@@ -1,6 +1,10 @@
 import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
-import { UsersProfileGetResponse } from "@slack/web-api"
+import {
+  UsersLookupByEmailResponse,
+  UsersProfileGetResponse,
+} from "@slack/web-api"
+import { SlackService } from "nestjs-slack-bolt/dist/services/slack.service"
 import { Repository } from "typeorm"
 import { dayjs } from "@/shared/utils/dayjs"
 import { PersonService } from "../person/person.service"
@@ -12,6 +16,9 @@ import { VoteSlackValidate } from "./slack/vote.slack.validate"
 @Injectable()
 export class VoteService {
   private readonly logger: Logger = new Logger(VoteService.name)
+
+  @Inject()
+  private readonly slackService: SlackService
 
   @InjectRepository(VoteEntity)
   private voteRepository: Repository<VoteEntity>
@@ -54,13 +61,18 @@ export class VoteService {
 
   async voteByAnonymous(payload: CreateAnonymousVoteRequest) {
     try {
-      const { topicId, receiverId, anonymous, message } = payload
+      const { topicId, receiverId, message, email } = payload
 
-      const [receiver, topic] = await Promise.all([
+      const [receiver, topic, slackUser] = await Promise.all([
         this.personService.findOne(receiverId),
         this.voteTopicRepository.findOne({
           where: { id: Number(topicId) },
         }),
+        this.slackService.client.users
+          .lookupByEmail({
+            email,
+          })
+          .catch(() => null) as Promise<UsersLookupByEmailResponse | null>,
       ])
 
       if (!receiver) {
@@ -71,10 +83,22 @@ export class VoteService {
         throw new BadRequestException("Topic not found")
       }
 
+      if (!slackUser) {
+        throw new BadRequestException(
+          "The email is not a valid user of this workspace.",
+        )
+      }
+
+      if (slackUser.user.profile.email === receiver.email) {
+        throw new BadRequestException("You can't vote for yourself")
+      }
+
       const voted = await this.voteRepository.save({
         votedFor: receiver,
-        votedByAnonymous: anonymous,
         votedDate: dayjs().toDate(),
+        slackUserId: slackUser.user.id,
+        slackUserEmail: slackUser.user.profile.email,
+        slackUserName: slackUser.user.profile.real_name,
         metadata: {},
         topic,
         message,
@@ -83,9 +107,14 @@ export class VoteService {
       return voted
     } catch (error) {
       this.logger.error(error)
-      throw new BadRequestException(
-        "Vote by anonymous failed, please try again",
-      )
+
+      let msg = "Vote by anonymous failed, please try again"
+
+      if (error instanceof BadRequestException) {
+        msg = error.message
+      }
+
+      throw new BadRequestException(msg)
     }
   }
 
