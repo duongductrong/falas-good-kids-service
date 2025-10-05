@@ -13,4 +13,8 @@ export class GetLeaderboardRequest {
   @IsNumber()
   @IsOptional()
   size?: number
+
+  @IsNumber()
+  @IsOptional()
+  topicId?: number
 }

@@ -16,7 +16,7 @@ export class LeaderboardService {
   private personRepository: Repository<PersonEntity>
 
   getLeaderboard(body: GetLeaderboardRequest) {
-    const { range, sortOrder, size } = body
+    const { range, sortOrder, size, topicId } = body
 
     const leaderboardRange = getLeaderboardRange(range)
 
@@ -26,6 +26,11 @@ export class LeaderboardService {
       .leftJoin(PersonEntity, "voter", "voter.id = vote.voted_by_id")
       .groupBy("person.id, vote.voted_for_id")
       .orderBy("COUNT(vote.id)", sortOrder.toString() as "ASC" | "DESC")
+
+    // Filter by topic if provided
+    if (topicId) {
+      rootQuery = rootQuery.andWhere("vote.topic_id = :topicId", { topicId })
+    }
 
     if (leaderboardRange) {
       const [startDate, endDate] = leaderboardRange
