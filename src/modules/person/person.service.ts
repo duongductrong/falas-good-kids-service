@@ -2,9 +2,9 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
 import { UsersProfileGetResponse } from "@slack/web-api"
 import { Repository } from "typeorm"
+import { dayjs } from "@/shared/utils/dayjs"
 import { VoteEntity } from "../vote/entities/vote.entity"
 import { PersonEntity } from "./entities/person.entity"
-import { dayjs } from "@/shared/utils/dayjs"
 
 @Injectable()
 export class PersonService {
@@ -54,20 +54,47 @@ export class PersonService {
       throw new NotFoundException("Person not found")
     }
 
+    const monthly = this.voteRepository
+      .createQueryBuilder("vm")
+      .select("TO_CHAR(DATE_TRUNC('month', vm.voted_date), 'MM.YYYY')", "month")
+      .addSelect("vm.voted_for_id", "voted_for_id")
+      .addSelect("COUNT(vm.id)", "total_votes")
+      .groupBy("vm.voted_date, vm.voted_for_id")
+
+    const rankingSubQuery = this.voteRepository
+      .createQueryBuilder()
+      .select("m.month", "month")
+      .addSelect("m.voted_for_id", "voted_for_id")
+      .addSelect("m.total_votes", "total_votes")
+      .addSelect(
+        `CAST(
+          RANK() OVER (
+            PARTITION BY m.month
+            ORDER BY m.total_votes DESC, m.voted_for_id ASC  
+          ) as INT
+        )`,
+        "rank",
+      )
+      .from(`(${monthly.getQuery()})`, "m")
+      .setParameters(monthly.getParameters())
+      .groupBy("m.month, m.voted_for_id, m.total_votes")
+
     const ranking = await this.voteRepository
       .createQueryBuilder("vote")
-      .select(
-        `CAST(RANK() OVER (
-          PARTITION BY vote.voted_date ORDER BY vote.voted_date ASC
-        ) as INT)`,
-        "ranked",
-      )
-      .groupBy("vote.voted_date")
+      .select("ranking.month", "month")
+      .addSelect("ranking.voted_for_id", "voted_for_id")
+      .addSelect("ranking.total_votes", "total_votes")
+      .addSelect("ranking.rank", "ranked")
+      .from(`(${rankingSubQuery.getQuery()})`, "ranking")
+      .setParameters(rankingSubQuery.getParameters())
       .where("vote.voted_date BETWEEN :startDate AND :endDate", {
         startDate: currentPeriod.startOf("month").toDate(),
         endDate: currentPeriod.endOf("month").toDate(),
       })
-      .andWhere("vote.voted_for_id = :id", { id: result.id })
+      .andWhere("ranking.voted_for_id = :id", { id: result.id })
+      .groupBy(
+        "ranking.month, ranking.voted_for_id, ranking.total_votes, ranking.rank",
+      )
       .getRawOne()
 
     return { ...result, rank: ranking?.ranked || "N/A" }
