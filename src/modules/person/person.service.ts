@@ -58,7 +58,7 @@ export class PersonService {
       .createQueryBuilder("vote")
       .select(
         `CAST(RANK() OVER (
-          PARTITION BY vote.voted_date ORDER BY vote.voted_date DESC
+          PARTITION BY vote.voted_date ORDER BY vote.voted_date ASC
         ) as INT)`,
         "ranked",
       )
@@ -67,9 +67,10 @@ export class PersonService {
         startDate: currentPeriod.startOf("month").toDate(),
         endDate: currentPeriod.endOf("month").toDate(),
       })
+      .andWhere("vote.voted_for_id = :id", { id: result.id })
       .getRawOne()
 
-    return { ...result, rank: ranking?.ranked || "Unknown" }
+    return { ...result, rank: ranking?.ranked || "N/A" }
   }
 
   async findAll() {
