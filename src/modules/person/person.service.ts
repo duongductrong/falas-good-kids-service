@@ -4,6 +4,7 @@ import { UsersProfileGetResponse } from "@slack/web-api"
 import { Repository } from "typeorm"
 import { VoteEntity } from "../vote/entities/vote.entity"
 import { PersonEntity } from "./entities/person.entity"
+import { dayjs } from "@/shared/utils/dayjs"
 
 @Injectable()
 export class PersonService {
@@ -40,31 +41,35 @@ export class PersonService {
   }
 
   async findOne(identify: string | number) {
-    if (typeof identify === "number" || !Number.isNaN(Number(identify))) {
-      const result = await this.personRepository.findOne({
-        where: { id: Number(identify) },
-      })
-
-      if (!result) {
-        throw new NotFoundException("Person not found")
-      }
-
-      const rank = 1
-
-      return { ...result, rank }
-    }
+    const currentPeriod = dayjs(dayjs(), "Asia/Ho_Chi_Minh")
 
     const result = await this.personRepository.findOne({
-      where: { email: String(identify) },
+      where:
+        typeof identify === "number" || !Number.isNaN(Number(identify))
+          ? { id: Number(identify) }
+          : { email: String(identify) },
     })
 
     if (!result) {
       throw new NotFoundException("Person not found")
     }
 
-    const rank = 1
+    const ranking = await this.voteRepository
+      .createQueryBuilder("vote")
+      .select(
+        `CAST(RANK() OVER (
+          PARTITION BY vote.voted_date ORDER BY vote.voted_date DESC
+        ) as INT)`,
+        "ranked",
+      )
+      .groupBy("vote.voted_date")
+      .where("vote.voted_date BETWEEN :startDate AND :endDate", {
+        startDate: currentPeriod.startOf("month").toDate(),
+        endDate: currentPeriod.endOf("month").toDate(),
+      })
+      .getRawOne()
 
-    return { ...result, rank }
+    return { ...result, rank: ranking?.ranked || "Unknown" }
   }
 
   async findAll() {
