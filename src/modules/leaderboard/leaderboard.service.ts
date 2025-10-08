@@ -135,10 +135,13 @@ export class LeaderboardService {
       .select(
         "TO_CHAR(DATE_TRUNC('month', vote.voted_date), 'MM.YYYY') as month",
       )
+      .addSelect("COUNT(*)", "totalVotes")
       .addSelect(
         `CAST(
           RANK() OVER (
-            PARTITION BY TO_CHAR(DATE_TRUNC('month' ,vote.voted_date), 'MM.YYYY') ORDER BY COUNT(vote.id) ASC
+            PARTITION BY 
+              TO_CHAR(DATE_TRUNC('month' ,vote.voted_date), 'MM.YYYY') 
+              ORDER BY COUNT(*) DESC, vote.voted_for_id ASC
           ) AS INT
         )`,
         "ranked",
