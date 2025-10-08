@@ -117,7 +117,7 @@ export class PersonService {
       page = 0,
       size = 10,
       sortOrder = "DESC",
-      sortField = "votedDate",
+      sortField = "createdAt",
     } = options
 
     const person = await this.personRepository.findOne({
@@ -171,6 +171,7 @@ export class PersonService {
           value: true,
           text: true,
         },
+        message: true,
       },
     })
 
