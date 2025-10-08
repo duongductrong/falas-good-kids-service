@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common"
+import { Injectable, NotFoundException } from "@nestjs/common"
 import { InjectRepository } from "@nestjs/typeorm"
 import { isNil } from "lodash"
 import { Repository } from "typeorm"
@@ -117,5 +117,43 @@ export class LeaderboardService {
         newestVoteDayjs.endOf("month").unix(),
       ],
     }
+  }
+
+  async getRankingTrend(personId: number) {
+    const person = await this.personRepository.findOne({
+      where: {
+        id: personId,
+      },
+    })
+
+    if (!person) {
+      throw new NotFoundException("Person not found")
+    }
+
+    const result = await this.voteRepository
+      .createQueryBuilder("vote")
+      .select(
+        "TO_CHAR(DATE_TRUNC('month', vote.voted_date), 'MM.YYYY') as month",
+      )
+      .addSelect(
+        `CAST(
+          RANK() OVER (
+            PARTITION BY TO_CHAR(DATE_TRUNC('month' ,vote.voted_date), 'MM.YYYY') ORDER BY COUNT(vote.id) ASC
+          ) AS INT
+        )`,
+        "ranked",
+      )
+      .addSelect("CAST(COUNT(vote.voted_for_id) as INT)", "totalVotes")
+      .where("voted_for_id = :id", { id: personId })
+      .andWhere("vote.voted_date BETWEEN :startDate AND :endDate", {
+        startDate: dayjs().startOf("year").toDate(),
+        endDate: dayjs().endOf("year").toDate(),
+      })
+      .groupBy(
+        "TO_CHAR(DATE_TRUNC('month', vote.voted_date), 'MM.YYYY'), vote.voted_for_id",
+      )
+      .getRawMany()
+
+    return result
   }
 }
