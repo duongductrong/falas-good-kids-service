@@ -58,8 +58,8 @@ export class PersonService {
       .createQueryBuilder("vm")
       .select("TO_CHAR(DATE_TRUNC('month', vm.voted_date), 'MM.YYYY')", "month")
       .addSelect("vm.voted_for_id", "voted_for_id")
-      .addSelect("COUNT(vm.id)", "total_votes")
-      .groupBy("vm.voted_date, vm.voted_for_id")
+      .addSelect("CAST(COUNT(vm.voted_for_id) as INT)", "total_votes")
+      .groupBy("month, voted_for_id")
 
     const rankingSubQuery = this.voteRepository
       .createQueryBuilder()
@@ -96,6 +96,8 @@ export class PersonService {
         "ranking.month, ranking.voted_for_id, ranking.total_votes, ranking.rank",
       )
       .getRawOne()
+
+    console.log(ranking)
 
     return { ...result, rank: ranking?.ranked || "N/A" }
   }
