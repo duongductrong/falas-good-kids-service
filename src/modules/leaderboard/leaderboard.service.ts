@@ -130,33 +130,74 @@ export class LeaderboardService {
       throw new NotFoundException("Person not found")
     }
 
-    const result = await this.voteRepository
-      .createQueryBuilder("vote")
-      .select(
-        "TO_CHAR(DATE_TRUNC('month', vote.voted_date), 'MM.YYYY') as month",
-      )
-      .addSelect("COUNT(*)", "totalVotes")
+    const monthlyQuery = this.voteRepository
+      .createQueryBuilder("v")
+      .select("TO_CHAR(DATE_TRUNC('month', v.voted_date), 'MM.YYYY')", "month")
+      .addSelect("v.voted_for_id", "voted_for_id")
+      .addSelect("CAST(COUNT(v.id) as INT)", "total_votes")
+      .groupBy("month, v.voted_for_id")
+
+    const rankedQuery = this.voteRepository
+      .createQueryBuilder()
+      .select("monthly.month", "month")
+      .addSelect("monthly.voted_for_id", "voted_for_id")
+      .addSelect("monthly.total_votes", "total_votes")
       .addSelect(
         `CAST(
           RANK() OVER (
             PARTITION BY 
-              TO_CHAR(DATE_TRUNC('month' ,vote.voted_date), 'MM.YYYY') 
-              ORDER BY COUNT(*) DESC, vote.voted_for_id ASC
+              monthly.month 
+              ORDER BY monthly.total_votes DESC, monthly.voted_for_id ASC
           ) AS INT
         )`,
-        "ranked",
+        "rank",
       )
-      .addSelect("CAST(COUNT(vote.voted_for_id) as INT)", "totalVotes")
-      .where("voted_for_id = :id", { id: personId })
+      .from(`(${monthlyQuery.getQuery()})`, "monthly")
+      .setParameters(monthlyQuery.getParameters())
+
+    const result = await this.voteRepository
+      .createQueryBuilder("vote")
+      .from(`(${rankedQuery.getQuery()})`, "r")
+      .setParameters(rankedQuery.getParameters())
+      .select("r.month", "month")
+      .addSelect("r.rank", "ranked")
+      .addSelect("r.total_votes", "totalVotes")
+      .where("r.voted_for_id = :playerId", { playerId: person.id })
       .andWhere("vote.voted_date BETWEEN :startDate AND :endDate", {
         startDate: dayjs().startOf("year").toDate(),
         endDate: dayjs().endOf("year").toDate(),
       })
-      .groupBy(
-        "TO_CHAR(DATE_TRUNC('month', vote.voted_date), 'MM.YYYY'), vote.voted_for_id",
-      )
-      .getRawMany()
+      .orderBy("r.month", "ASC")
+      .groupBy("r.month, r.rank, r.total_votes")
 
-    return result
+    return result.getRawMany()
+
+    // const result = await this.voteRepository
+    //   .createQueryBuilder("vote")
+    //   .select(
+    //     "TO_CHAR(DATE_TRUNC('month', vote.voted_date), 'MM.YYYY') as month",
+    //   )
+    //   .addSelect("COUNT(*)", "totalVotes")
+    //   .addSelect(
+    //     `CAST(
+    //       RANK() OVER (
+    //         PARTITION BY
+    //           TO_CHAR(DATE_TRUNC('month' ,vote.voted_date), 'MM.YYYY')
+    //           ORDER BY COUNT(*) DESC, vote.voted_for_id ASC
+    //       ) AS INT
+    //     )`,
+    //     "ranked",
+    //   )
+    //   .addSelect("CAST(COUNT(vote.voted_for_id) as INT)", "totalVotes")
+    //   .where("voted_for_id = :id", { id: personId })
+    //   .andWhere("vote.voted_date BETWEEN :startDate AND :endDate", {
+    //     startDate: dayjs().startOf("year").toDate(),
+    //     endDate: dayjs().endOf("year").toDate(),
+    //   })
+    //   .groupBy(
+    //     "TO_CHAR(DATE_TRUNC('month', vote.voted_date), 'MM.YYYY'), vote.voted_for_id",
+    //   )
+
+    // return result.getRawMany()
   }
 }
