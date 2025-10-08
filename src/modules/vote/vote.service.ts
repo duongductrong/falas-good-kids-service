@@ -36,6 +36,7 @@ export class VoteService {
     sender: UsersProfileGetResponse,
     receiver: UsersProfileGetResponse,
     topic: VoteTopicEntity,
+    message?: string,
     slackMetadata?: {
       slackChannelId?: string
       slackChannelName?: string
@@ -54,6 +55,7 @@ export class VoteService {
     return this.voteRepository.save({
       ...slackMetadata,
       topic,
+      message,
       votedBy: senderPerson,
       votedFor: receiverPerson,
       votedDate: dayjs().toDate(),

@@ -79,6 +79,20 @@ export class VoteSlackController {
               block_id: "vote_type_selection",
             },
             {
+              type: "input",
+              block_id: "my_message_input_block",
+              label: {
+                type: "plain_text",
+                text: "Enter your message (optional):",
+                emoji: true,
+              },
+              element: {
+                type: "plain_text_input",
+                action_id: "my_message_input",
+                multiline: true,
+              },
+            },
+            {
               type: "actions",
               elements: [
                 {
@@ -132,6 +146,7 @@ export class VoteSlackController {
         this.voteSlackHelper.submitVote.parse(payload)
 
       const selectedOption = this.voteSlackHelper.getSelectedOption(body)
+      const message = this.voteSlackHelper.getMessage(body)
 
       const { sender, receiver } = await this.voteSlackService.getParticipants({
         receiverId,
@@ -148,7 +163,7 @@ export class VoteSlackController {
         )
       }
 
-      await this.voteService.vote(sender, receiver, topic, {
+      await this.voteService.vote(sender, receiver, topic, message, {
         slackChannelId: metadata.channelId,
         slackChannelName: metadata.channelName,
         slackClientMessageId: metadata.clientMessageId,

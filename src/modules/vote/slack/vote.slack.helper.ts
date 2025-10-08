@@ -48,4 +48,8 @@ export class VoteSlackHelper {
 
     return selectedOption
   }
+
+  getMessage(body: BlockAction) {
+    return body.state.values.my_message_input_block.my_message_input.value || ""
+  }
 }
