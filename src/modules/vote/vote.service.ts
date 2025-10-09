@@ -52,6 +52,12 @@ export class VoteService {
       this.personService.findOneOrCreate(receiver),
     ])
 
+    if (!message || !topic) {
+      throw new BadRequestException(
+        "❌ Message and topic are required, please make sure you select a topic and enter a message",
+      )
+    }
+
     return this.voteRepository.save({
       ...slackMetadata,
       topic,

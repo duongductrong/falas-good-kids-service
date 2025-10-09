@@ -63,7 +63,7 @@ export class VoteSlackController {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "Choose one option:",
+                text: "Choose one option (required):",
               },
               accessory: {
                 type: "radio_buttons",
@@ -83,7 +83,7 @@ export class VoteSlackController {
               block_id: "my_message_input_block",
               label: {
                 type: "plain_text",
-                text: "Enter your message (optional):",
+                text: "Enter your message (required):",
                 emoji: true,
               },
               element: {
