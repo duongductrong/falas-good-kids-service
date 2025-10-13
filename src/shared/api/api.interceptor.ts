@@ -13,6 +13,14 @@ import { Api } from "./api"
 
 @Injectable()
 export class ApiInterceptor implements NestInterceptor {
+  /**
+   * Check if the current execution context is HTTP
+   * This prevents errors when using with non-HTTP contexts (e.g., Telegram bots, WebSockets, etc.)
+   */
+  private isHttpContext(context: ExecutionContext): boolean {
+    return context.getType() === "http"
+  }
+
   private responseHandler(
     res: Pick<Api, "data" | "message" | "meta">,
     context: ExecutionContext,
@@ -39,7 +47,7 @@ export class ApiInterceptor implements NestInterceptor {
     const response = ctx.getResponse<Response>()
     const request = ctx.getRequest<Request>()
 
-    const isDebugging = request.headers["x-custom-debug"]
+    const isDebugging = request.headers?.["x-custom-debug"] || false
 
     const status =
       exception instanceof HttpException
@@ -79,6 +87,12 @@ export class ApiInterceptor implements NestInterceptor {
     context: ExecutionContext,
     next: CallHandler<unknown>,
   ): Observable<any> {
+    // Only apply this interceptor to HTTP contexts
+    // Skip for other contexts like Telegram bots, WebSockets, Microservices, etc.
+    if (!this.isHttpContext(context)) {
+      return next.handle()
+    }
+
     return next.handle().pipe(
       map((res) => this.responseHandler(res as any, context)),
       catchError((err) => throwError(() => this.errorHandler(err, context))),
