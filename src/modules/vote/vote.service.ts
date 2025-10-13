@@ -103,7 +103,10 @@ export class VoteService {
         throw new BadRequestException("You can't vote for yourself")
       }
 
+      const votedBy = await this.personService.findOneOrCreate(slackUser)
+
       const voted = await this.voteRepository.save({
+        votedBy,
         votedFor: receiver,
         votedDate: dayjs().toDate(),
         slackUserId: slackUser.user.id,
@@ -112,7 +115,7 @@ export class VoteService {
         metadata: {},
         topic,
         message,
-      })
+      } as Partial<VoteEntity>)
 
       return voted
     } catch (error) {
