@@ -1,7 +1,8 @@
 import { ClassSerializerInterceptor, Module } from "@nestjs/common"
 import { APP_INTERCEPTOR } from "@nestjs/core"
-import { SlackModule } from "nestjs-slack-bolt"
 import { LogLevel } from "@slack/web-api"
+import { SlackModule } from "nestjs-slack-bolt"
+import { TelegrafModule } from "nestjs-telegraf"
 import { DatabaseModule } from "./database.module"
 import { AuthModule } from "./modules/auth/auth.module"
 import { HealthModule } from "./modules/health/health.module"
@@ -14,6 +15,9 @@ import { VoteModule } from "./modules/vote/vote.module"
   imports: [
     SlackModule.forRoot({
       logLevel: LogLevel.DEBUG,
+    }),
+    TelegrafModule.forRoot({
+      token: process.env.TELEGRAM_BOT_TOKEN,
     }),
     DatabaseModule,
     UserModule,
