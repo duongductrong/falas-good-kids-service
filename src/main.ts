@@ -2,6 +2,7 @@ import {
   ClassSerializerInterceptor,
   INestApplication,
   VersioningType,
+  Logger,
 } from "@nestjs/common"
 import { NestFactory, Reflector } from "@nestjs/core"
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger"
@@ -66,7 +67,10 @@ async function bootstrap() {
 
   const appPrefix = process.env.APP_PREFIX || "/"
 
-  const app = await NestFactory.create(AppModule, { cors: true })
+  const app = await NestFactory.create(AppModule, {
+    cors: true,
+    logger: new Logger(),
+  })
 
   app.setGlobalPrefix(appPrefix)
 
