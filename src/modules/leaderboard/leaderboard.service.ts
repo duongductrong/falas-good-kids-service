@@ -24,6 +24,7 @@ export class LeaderboardService {
       .leftJoin(PersonEntity, "voter", "voter.id = vote.voted_by_id")
       .groupBy("person.id, vote.voted_for_id")
       .orderBy("COUNT(vote.id)", sortOrder.toString() as "ASC" | "DESC")
+      .addOrderBy("person.id", "ASC")
 
     if (topicId) {
       rootQuery = rootQuery.andWhere("vote.topic_id = :topicId", { topicId })
